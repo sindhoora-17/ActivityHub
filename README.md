@@ -1,343 +1,173 @@
-# Personal Timeline Application
+# ActivityHub — Personal Activity Timeline
 
 ## Overview
-The **Personal Timeline App** is a full-stack journaling application that automatically builds a timeline of a user’s digital life by integrating with multiple third-party APIs. Users can also manually add personal events.
+**ActivityHub** is a full-stack app that automatically builds a timeline of your
+digital life by integrating with multiple third-party APIs, and lets you add
+personal events by hand. Connect Spotify, GitHub, Google Calendar, and Discord,
+and ActivityHub pulls your recent activity into one unified, filterable timeline.
 
 This project demonstrates:
 
 - Full-stack development with **React + .NET 8**
-- OAuth authentication **(Google)**
-- Integration with **Google Calendar, Spotify, Discord, GitHub**
+- **OAuth 2.0** authorization-code flows across four providers
+- **Automatic per-provider access-token refresh** using stored refresh tokens
 - Persistent storage via **Entity Framework Core + SQLite**
-- Protected API routes & secure sessions
+- Protected API routes and cookie-based sessions
 - A modern UI with filters, sync buttons, and timeline cards
 
 ---
 
 ## Tech Stack
 
-### Frontend
-- React - JavaScript
-- React Router
-- Tailwind CSS
-
-### Backend
-- .NET 8 Web API
-- Entity Framework Core (SQLite)
-- Google OAuth
-- HttpClient for API calls
-- Swagger documentation
-
-### Database
-- SQLite
-- EF Core Code-First Migrations
+**Frontend:** React (JavaScript), React Router, Tailwind CSS, Vite
+**Backend:** .NET 8 Web API, Entity Framework Core (SQLite), Swagger
+**Auth:** OAuth 2.0 (Google login + Spotify / Google Calendar / Discord / GitHub connections), cookie-based sessions
+**Database:** SQLite with EF Core code-first migrations
 
 ---
 
 ## Authentication
 
-The app uses **Google OAuth** for secure login.
+Login is handled through **Google OAuth**. Individual services (Spotify, Google
+Calendar, Discord, GitHub) are then connected per user via their own OAuth
+authorization-code flows.
 
-### Authentication Flow
+**Login flow**
 1. User clicks "Login with Google"
-2. Redirect to Google consent screen
-3. After login, backend validates the Google token
-4. User info is stored in the SQLite database
-5. A secure cookie manages session-based authentication
-6. Only authenticated users can access protected routes
+2. Redirect to the Google consent screen
+3. Backend validates the returned Google identity
+4. User info is stored in SQLite
+5. A secure HttpOnly cookie manages the session
+6. Only authenticated users can reach protected routes
 
-Protected routes include:
-- `/dashboard`
-- `/timeline`
-- `/api/timeline/*`
-- `/api/summary/*`
+**Token refresh.** For each connected provider, the backend stores the access
+token, its expiry, and a refresh token. Before every sync it checks whether the
+access token has expired and, if so, transparently exchanges the refresh token
+for a new one — so syncing keeps working without asking the user to log in again.
+
+Protected routes include `/dashboard`, `/timeline`, `/api/timeline/*`, and
+`/api/summary/*`.
 
 ---
 
 ## Features
 
-### 1. Dashboard Summary Cards
-Displays the most recent activity from synced APIs:
+### 1. Dashboard summary cards
+Shows the most recent activity from each connected service. Each tile has a Sync
+button that queries the backend for updates.
 
-| API | Summary |
-|-----|---------|
-| Google Calendar | Next event shown in UTC |
-| Spotify | Last played track + artist |
-| Discord | Total servers joined + last active server |
-| GitHub | Last repo activity |
+| Service         | Summary shown                     |
+|-----------------|-----------------------------------|
+| Google Calendar | Next upcoming event               |
+| Spotify         | Last played track + artist        |
+| Discord         | Servers joined + last active server |
+| GitHub          | Most recent repo activity         |
 
-Each tile includes a Sync button that queries the backend for updates.
+### 2. Timeline page
+A card-based timeline with:
+- Icons per source (Google, Spotify, Discord, GitHub)
+- A filter bar (All, GoogleCalendar, Spotify, Discord, GitHub)
+- Delete on each entry
+- Responsive layout and animations
 
----
+### 3. Add-entry modal
+Manually add an entry (title, description, date, source), saved straight to SQLite.
 
-### 2. Timeline Page
-A card-based timeline UI featuring:
+### 4. Third-party integrations
+- **Google Calendar** — fetches upcoming events, handles all-day events, saves new entries on sync
+- **Spotify** — fetches most recently played track, parses track + artist
+- **Discord** — fetches joined servers and recent activity
+- **GitHub** — fetches push events, stars, and repo creation, saved as summary entries
 
-- Icons representing Google, Spotify, Discord, GitHub  
-- Filter bar (All, GoogleCalendar, Spotify, Discord, GitHub)  
-- Delete button for each entry  
-- Responsive layout and animations  
-
----
-
-### 3. Add Entry Modal
-Users can manually add:
-
-- Title  
-- Description  
-- Date  
-- Source API   
-
-Saved instantly into the SQLite database.
+Each provider's distinct API response is normalized into one shared
+`TimelineEntry` model, and entries already saved are skipped on re-sync so
+syncing never creates duplicates.
 
 ---
 
-### 4. Third-Party API Integrations
+## Project structure
 
-This project integrates four APIs:
-
-#### Google Calendar
-- Fetches upcoming events  
-- Handles all-day events   
-- Saves new entries on sync  
-
-#### Spotify
-- Fetches most recently played track  
-- Parses track & artist  
-
-#### Discord
-- Fetches joined servers  
-- Shows recently active server
-
-#### GitHub
-- Fetches push events, stars, repo creation  
-- Saves summary entries  
----
-
-## Project Structure
-
-### Backend
 ```
 backend/
 ├── Controllers/
-│ ├── AuthController.cs
-│ ├── GoogleOAuthController.cs
-│ ├── TimelineController.cs
-│ ├── SummaryController.cs
+│   ├── AuthController.cs
+│   ├── SpotifyController.cs
+│   ├── TimelineController.cs
+│   └── SummaryController.cs
 ├── Services/
-│ ├── GoogleCalendarService.cs
-│ ├── SpotifyService.cs
-│ ├── DiscordService.cs
-│ ├── GithubService.cs
+│   ├── GoogleCalendarService.cs
+│   ├── SpotifyService.cs
+│   ├── DiscordService.cs
+│   └── GitHubServices.cs
 ├── Models/
-│ ├── User.cs
-│ ├── TimelineEntry.cs
-│ ├── ApiConnection.cs
+│   ├── User.cs
+│   ├── TimelineEntry.cs
+│   └── ApiConnection.cs
 ├── Data/
-│ ├── AppDbContext.cs
+│   └── AppDbContext.cs
 ├── Migrations/
-├── Program.cs
-├── appsettings.json
-```
+├── Program.cs           # Google login + per-provider OAuth callbacks & sync routes
+└── appsettings.json     # config template (placeholders only — no real secrets)
 
-### Frontend
-```
 frontend/
-├── components/
-│ ├── ApiTile.jsx
-│ ├── ProfileSidebar.jsx
-│ ├── TimelineFeed.jsx
-│ ├── TopBar.jsx
-├── pages/
-│ ├── LoginPage.jsx
-│ ├── DashboardPage.jsx
-│ ├── TimelinePage.jsx
-├── App.jsx
-├── index.jsx
+├── src/
+│   ├── components/       # ApiTile, ProfileSidebar, TimelineFeed, TopBar, ...
+│   ├── pages/            # LoginPage, Dashboard, TimelinePage, LandingPage
+│   ├── auth/             # AuthContext / AuthProvider / ProtectedRoute
+│   ├── App.jsx
+│   └── main.jsx
 ```
----
-## Installation Requirements
-
-Before running this project, install all required dependencies.  
-Assume the machine has **nothing installed**.
 
 ---
 
-## Backend Requirements (C# / .NET 8)
+## Configuration
 
-### 1. Install .NET 8 SDK  
-Download & install from:  
-https://dotnet.microsoft.com/en-us/download/dotnet/8.0
+OAuth client IDs and secrets are read from configuration and are **not** committed
+to the repo — `appsettings.json` contains placeholders only. Supply your real
+values locally via `appsettings.Development.json` (gitignored) or .NET user
+secrets. Each provider needs a client ID, client secret, and redirect URI:
 
-Verify installation:
-```
-dotnet --version
-```
----
-### 2. Install Entity Framework Core Tools
-These are required for migrations & SQLite database updates.
-```
-dotnet tool install --global dotnet-ef
-```
-Verify:
-```
-dotnet ef
-```
----
-### 3. Install SQLite
-Mac:
-```
-brew install sqlite
-```
-Windows (using winget):
-```
-winget install SQLite
-```
-Check:
-```
-sqlite3 --version
-```
----
-
-### Required .NET Dependencies
-(Automatically restored when running the backend)
-```
-Microsoft.EntityFrameworkCore.Sqlite
-Microsoft.EntityFrameworkCore.Design
-Microsoft.EntityFrameworkCore.Tools
-Microsoft.AspNetCore.Authentication.Google
-Microsoft.AspNetCore.Authentication.Cookies
+```json
+"Spotify":          { "ClientId": "...", "ClientSecret": "...", "RedirectUri": "http://127.0.0.1:5184/api/spotify/callback" },
+"Authentication":   { "Google": { "ClientId": "...", "ClientSecret": "..." } },
+"GoogleCalendar":   { "ClientId": "...", "ClientSecret": "...", "RedirectUri": "http://127.0.0.1:5184/api/gcal/callback" },
+"Discord":          { "ClientId": "...", "ClientSecret": "...", "RedirectUri": "http://127.0.0.1:5184/api/discord/callback" },
+"GitHub":           { "AccessToken": "..." }
 ```
 
-## Frontend Requirements (React + Tailwind)
-### 1. Install Node.js (LTS)
-Download from:
-https://nodejs.org/en/download/
-Verify:
-```
-node -v
-npm -v
-```
 ---
-### 2. Navigate to frontend folder
-```
-cd frontend
-```
----
-### 3. Install npm packages
-```
-npm install
-```
----
-### 4. Install Tailwind CSS (Required)
-Run:
-```
-npm install -D tailwindcss postcss autoprefixer
-npx tailwindcss init -p
-```
-Ensure ```index.css``` contains:
-```
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-```
----
-## Setup Instructions
 
-## Backend Setup
+## Running locally
 
-### 1. Navigate to backend
+> Requires the .NET 8 SDK and Node.js (LTS).
+
+**Backend**
 ```bash
 cd backend
+dotnet tool install --global dotnet-ef   # first time only
+dotnet ef database update                # apply migrations
+dotnet run                               # http://localhost:5184
 ```
-### 2. Configure OAuth in appsettings.json
-```json
-"GoogleOAuth": {
-  "ClientId": "YOUR_GOOGLE_CLIENT_ID",
-  "ClientSecret": "YOUR_GOOGLE_CLIENT_SECRET",
-}
-```
-### 3. Apply database migrations
-```bash
-dotnet ef database update
-```
-### 4. Run Backend
-```bash
-dotnet run
-```
-Backend URL: http://localhost:5184
 
----
-## Frontend Setup
-
-### 1. Navigate to frontend
+**Frontend**
 ```bash
 cd frontend
-```
-### 2. Install dependencies
-```bash
 npm install
+npm run dev -- --host 127.0.0.1          # http://127.0.0.1:5173
 ```
-### 3. Start the development server
-```bash
-npm run dev -- --host 127.0.0.1
-```
-Frontend URL:  http://127.0.0.1:5173/
 
----
-## Swagger API Documentation
-
-Available at: http://127.0.0.1:5184/swagger
-
-Includes:
-
-- `/auth/google/login`
-    
-- `/auth/google/callback`
-    
-- `/api/timeline`
-    
-- `/api/summary/\*`
-    
-- `/api/googlecalendar/sync`
-    
-- `/api/spotify/sync`
-    
-- `/api/discord/sync`
-    
-- `/api/github/sync`
-
----
-## Key API Endpoints
-
-### Timeline Endpoints
-| Method| Endpoint          | Description        |
-|------------|-------------------------|-------------------------|
-| GET        | `/api/timeline`         | Fetch all entries       |
-| POST       | `/api/timeline`         | Create a timeline entry |
-| GET        | `/api/timeline/{id}`    | Get a specific entry    |
-| DELETE     | `/api/timeline/{id}`    | Delete an entry         |
+Swagger API docs: http://127.0.0.1:5184/swagger
 
 ---
 
-### Google Calendar Endpoints
-| Method| Endpoint                  | Description        |
-|------------|--------------------------------|------------------------|
-| GET        | `/api/googlecalendar/sync`     | Sync calendar events   |
+## Key API endpoints
 
-> _Other third-party APIs (Spotify, Discord, GitHub) follow the same `/sync` pattern._
+| Method | Endpoint             | Description             |
+|--------|----------------------|-------------------------|
+| GET    | `/api/timeline`      | Fetch all entries       |
+| POST   | `/api/timeline`      | Create a timeline entry |
+| GET    | `/api/timeline/{id}` | Get a specific entry    |
+| DELETE | `/api/timeline/{id}` | Delete an entry         |
 
----
-## Testing
-
-### Using SQLite
-```bash
-sqlite3 personal_timeline.db
-.tables
-SELECT * FROM TimelineEntries;
-```
-### Using Swagger
-Open in browser:
-```bash
-http://127.0.0.1:5184/swagger
-```
+Each provider exposes a sync endpoint following the same pattern:
+`/api/spotify/sync`, `/api/gcal/sync`, `/api/discord/sync`, `/api/github/sync`.
