@@ -1,173 +1,171 @@
 # ActivityHub — Personal Activity Timeline
 
-## Overview
-**ActivityHub** is a full-stack app that automatically builds a timeline of your
-digital life by integrating with multiple third-party APIs, and lets you add
-personal events by hand. Connect Spotify, GitHub, Google Calendar, and Discord,
-and ActivityHub pulls your recent activity into one unified, filterable timeline.
+ActivityHub is a full-stack application that combines activity from Spotify, GitHub, Google Calendar, and Discord into one unified, filterable timeline. Users sign in with Google, connect external services, sync recent activity, and can also add timeline entries manually.
 
-This project demonstrates:
+## Highlights
 
-- Full-stack development with **React + .NET 8**
-- **OAuth 2.0** authorization-code flows across four providers
-- **Automatic per-provider access-token refresh** using stored refresh tokens
-- Persistent storage via **Entity Framework Core + SQLite**
-- Protected API routes and cookie-based sessions
-- A modern UI with filters, sync buttons, and timeline cards
-
----
+- **Multi-provider integration** — pulls activity from Spotify, Google Calendar, Discord, and GitHub into one shared timeline model.
+- **Automatic token refresh** — Spotify, Google Calendar, and Discord access tokens are refreshed when needed using stored refresh tokens.
+- **Normalized activity model** — provider-specific API responses are converted into a common `TimelineEntry` representation.
+- **Deduplicated syncs** — provider event identifiers prevent repeated syncs from inserting duplicate timeline entries.
+- **Authenticated full-stack flow** — Google login with an HttpOnly cookie-backed session protects dashboard and API routes.
+- **Persistent local data** — Entity Framework Core with SQLite stores users, API connections, and timeline entries.
 
 ## Tech Stack
 
-**Frontend:** React (JavaScript), React Router, Tailwind CSS, Vite
-**Backend:** .NET 8 Web API, Entity Framework Core (SQLite), Swagger
-**Auth:** OAuth 2.0 (Google login + Spotify / Google Calendar / Discord / GitHub connections), cookie-based sessions
-**Database:** SQLite with EF Core code-first migrations
+**Frontend:** React 19, React Router, Tailwind CSS, Vite  
+**Backend:** .NET 9 Web API, Entity Framework Core, Swagger  
+**Authentication:** Google OAuth login, provider authorization flows for Spotify / Google Calendar / Discord, cookie sessions  
+**Database:** SQLite with EF Core migrations
 
----
+## Architecture
 
-## Authentication
+```text
+                 ┌────────────────────┐
+                 │      React UI      │
+                 │ dashboard/timeline │
+                 └─────────┬──────────┘
+                           │ credentials: include
+                           ▼
+                 ┌────────────────────┐
+                 │    .NET 9 API      │
+                 │ auth + sync routes │
+                 └──────┬─────┬───────┘
+                        │     │
+            ┌───────────┘     └────────────┐
+            ▼                              ▼
+  ┌──────────────────┐          ┌──────────────────┐
+  │ Provider APIs    │          │ EF Core + SQLite │
+  │ Spotify / GCal   │          │ users, tokens,   │
+  │ Discord / GitHub │          │ timeline entries │
+  └──────────────────┘          └──────────────────┘
+```
 
-Login is handled through **Google OAuth**. Individual services (Spotify, Google
-Calendar, Discord, GitHub) are then connected per user via their own OAuth
-authorization-code flows.
+Each provider service fetches external activity, maps it into `TimelineEntry`, checks whether the provider event has already been persisted, and saves only new entries.
 
-**Login flow**
-1. User clicks "Login with Google"
-2. Redirect to the Google consent screen
-3. Backend validates the returned Google identity
-4. User info is stored in SQLite
-5. A secure HttpOnly cookie manages the session
-6. Only authenticated users can reach protected routes
+## Authentication and provider connections
 
-**Token refresh.** For each connected provider, the backend stores the access
-token, its expiry, and a refresh token. Before every sync it checks whether the
-access token has expired and, if so, transparently exchanges the refresh token
-for a new one — so syncing keeps working without asking the user to log in again.
+Application login uses Google OAuth through ASP.NET Core authentication. After login, the backend creates an HttpOnly cookie session and associates the Google identity with a local user record.
 
-Protected routes include `/dashboard`, `/timeline`, `/api/timeline/*`, and
-`/api/summary/*`.
+Spotify, Google Calendar, and Discord use authorization-code flows. Their access tokens, refresh tokens, and expiration times are stored per user so the backend can refresh expired access tokens before sync.
 
----
+GitHub currently uses a user-supplied personal access token plus a GitHub username rather than a GitHub OAuth flow.
 
 ## Features
 
-### 1. Dashboard summary cards
-Shows the most recent activity from each connected service. Each tile has a Sync
-button that queries the backend for updates.
+### Dashboard
+Shows the latest activity from connected services with provider-specific sync controls.
 
-| Service         | Summary shown                     |
-|-----------------|-----------------------------------|
-| Google Calendar | Next upcoming event               |
-| Spotify         | Last played track + artist        |
-| Discord         | Servers joined + last active server |
-| GitHub          | Most recent repo activity         |
+### Unified timeline
+Displays activity cards from multiple providers with source filtering and entry deletion.
 
-### 2. Timeline page
-A card-based timeline with:
-- Icons per source (Google, Spotify, Discord, GitHub)
-- A filter bar (All, GoogleCalendar, Spotify, Discord, GitHub)
-- Delete on each entry
-- Responsive layout and animations
+### Manual entries
+Users can create their own timeline events with a title, description, date, and source.
 
-### 3. Add-entry modal
-Manually add an entry (title, description, date, source), saved straight to SQLite.
-
-### 4. Third-party integrations
-- **Google Calendar** — fetches upcoming events, handles all-day events, saves new entries on sync
-- **Spotify** — fetches most recently played track, parses track + artist
-- **Discord** — fetches joined servers and recent activity
-- **GitHub** — fetches push events, stars, and repo creation, saved as summary entries
-
-Each provider's distinct API response is normalized into one shared
-`TimelineEntry` model, and entries already saved are skipped on re-sync so
-syncing never creates duplicates.
-
----
+### Provider sync
+- **Google Calendar** — imports upcoming calendar events, including all-day events.
+- **Spotify** — imports recently played tracks and artist information.
+- **Discord** — imports joined-server activity.
+- **GitHub** — imports supported public activity events such as pushes, repository creation, stars, pull requests, and issues.
 
 ## Project structure
 
-```
+```text
 backend/
-├── Controllers/
-│   ├── AuthController.cs
-│   ├── SpotifyController.cs
-│   ├── TimelineController.cs
-│   └── SummaryController.cs
-├── Services/
-│   ├── GoogleCalendarService.cs
-│   ├── SpotifyService.cs
-│   ├── DiscordService.cs
-│   └── GitHubServices.cs
-├── Models/
-│   ├── User.cs
-│   ├── TimelineEntry.cs
-│   └── ApiConnection.cs
-├── Data/
-│   └── AppDbContext.cs
-├── Migrations/
-├── Program.cs           # Google login + per-provider OAuth callbacks & sync routes
-└── appsettings.json     # config template (placeholders only — no real secrets)
+├── Controllers/       API controllers
+├── Services/          provider integration and sync logic
+├── Models/            User, TimelineEntry, ApiConnection
+├── Data/              EF Core DbContext
+├── Migrations/        database schema history
+├── Program.cs         authentication, provider callbacks, sync endpoints
+└── appsettings.json   placeholder configuration only
 
 frontend/
-├── src/
-│   ├── components/       # ApiTile, ProfileSidebar, TimelineFeed, TopBar, ...
-│   ├── pages/            # LoginPage, Dashboard, TimelinePage, LandingPage
-│   ├── auth/             # AuthContext / AuthProvider / ProtectedRoute
-│   ├── App.jsx
-│   └── main.jsx
+├── src/components/    timeline/dashboard UI
+├── src/pages/         Login, Dashboard, Timeline, Landing
+├── src/auth/          auth context and protected routes
+├── src/App.jsx
+└── src/main.jsx
 ```
-
----
 
 ## Configuration
 
-OAuth client IDs and secrets are read from configuration and are **not** committed
-to the repo — `appsettings.json` contains placeholders only. Supply your real
-values locally via `appsettings.Development.json` (gitignored) or .NET user
-secrets. Each provider needs a client ID, client secret, and redirect URI:
+No real OAuth client secrets should be committed. `backend/appsettings.json` contains placeholders only. Supply local credentials through `appsettings.Development.json` (gitignored), environment variables, or .NET user secrets.
+
+Example configuration keys:
 
 ```json
-"Spotify":          { "ClientId": "...", "ClientSecret": "...", "RedirectUri": "http://127.0.0.1:5184/api/spotify/callback" },
-"Authentication":   { "Google": { "ClientId": "...", "ClientSecret": "..." } },
-"GoogleCalendar":   { "ClientId": "...", "ClientSecret": "...", "RedirectUri": "http://127.0.0.1:5184/api/gcal/callback" },
-"Discord":          { "ClientId": "...", "ClientSecret": "...", "RedirectUri": "http://127.0.0.1:5184/api/discord/callback" },
-"GitHub":           { "AccessToken": "..." }
+"Spotify": {
+  "ClientId": "...",
+  "ClientSecret": "...",
+  "RedirectUri": "http://127.0.0.1:5184/api/spotify/callback"
+},
+"Authentication": {
+  "Google": {
+    "ClientId": "...",
+    "ClientSecret": "..."
+  }
+},
+"GoogleCalendar": {
+  "ClientId": "...",
+  "ClientSecret": "...",
+  "RedirectUri": "http://127.0.0.1:5184/api/gcal/callback"
+},
+"Discord": {
+  "ClientId": "...",
+  "ClientSecret": "...",
+  "RedirectUri": "http://127.0.0.1:5184/api/discord/callback"
+}
 ```
-
----
 
 ## Running locally
 
-> Requires the .NET 8 SDK and Node.js (LTS).
+Requires the **.NET 9 SDK** and a current Node.js LTS release.
 
-**Backend**
+### Backend
+
 ```bash
 cd backend
 dotnet tool install --global dotnet-ef   # first time only
-dotnet ef database update                # apply migrations
-dotnet run                               # http://localhost:5184
+dotnet ef database update
+dotnet run
 ```
 
-**Frontend**
+Backend: `http://127.0.0.1:5184`  
+Swagger: `http://127.0.0.1:5184/swagger`
+
+### Frontend
+
 ```bash
 cd frontend
 npm install
-npm run dev -- --host 127.0.0.1          # http://127.0.0.1:5173
+npm run dev -- --host 127.0.0.1
 ```
 
-Swagger API docs: http://127.0.0.1:5184/swagger
-
----
+Frontend: `http://127.0.0.1:5173`
 
 ## Key API endpoints
 
-| Method | Endpoint             | Description             |
-|--------|----------------------|-------------------------|
-| GET    | `/api/timeline`      | Fetch all entries       |
-| POST   | `/api/timeline`      | Create a timeline entry |
-| GET    | `/api/timeline/{id}` | Get a specific entry    |
-| DELETE | `/api/timeline/{id}` | Delete an entry         |
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/timeline` | Fetch timeline entries |
+| POST | `/api/timeline` | Create a timeline entry |
+| GET | `/api/timeline/{id}` | Fetch one entry |
+| DELETE | `/api/timeline/{id}` | Delete an entry |
+| POST | `/api/spotify/sync` | Sync Spotify activity |
+| POST | `/api/gcal/sync` | Sync Google Calendar activity |
+| POST | `/api/discord/sync` | Sync Discord activity |
+| POST | `/api/github/sync` | Sync GitHub activity |
 
-Each provider exposes a sync endpoint following the same pattern:
-`/api/spotify/sync`, `/api/gcal/sync`, `/api/discord/sync`, `/api/github/sync`.
+## Security notes
+
+This repository is a portfolio/demo application, not a production identity platform.
+
+- OAuth client secrets are expected to live outside source control.
+- Local SQLite database files are ignored and should never be committed because they can contain user data and provider tokens.
+- Provider access and refresh tokens are currently stored in the local SQLite database; a production deployment should encrypt sensitive tokens at rest or use a dedicated secrets/token store.
+- The custom Spotify, Google Calendar, and Discord authorization flows should add OAuth `state` validation before being exposed beyond local/demo use.
+
+## CI
+
+GitHub Actions verifies that the .NET backend builds and the React frontend installs and builds successfully on every push and pull request.
